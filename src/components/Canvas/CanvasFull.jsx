@@ -52,10 +52,6 @@ import {
     sendCanvasFileSwitch,
 } from '../../services/socket';
 
-/**
- * Canvas component - Apple Notes style interactive whiteboard
- * Personal canvas with localStorage persistence (no sync)
- */
 
 // Preset colors
 const PRESET_COLORS = [
@@ -107,9 +103,7 @@ const INITIAL_CANVAS_HEIGHT = 2000;
 const CANVAS_HEIGHT_INCREMENT = 500;
 const BOTTOM_THRESHOLD = 100;
 
-/**
- * Custom Eraser Brush using destination-out composition
- */
+// eraser brush - uses destination-out
 class EraserBrush extends fabric.PencilBrush {
     constructor(canvas) {
         super(canvas);
@@ -778,7 +772,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
 
         const handleRemotePathCreate = (data) => {
             if (data.canvasId !== activeFileId) return;
-            console.log('🎨 Remote path created');
+            console.log('remote path created');
 
             isRemoteUpdate.current = true;
             fabric.util.enlivenObjects([data.pathData], (objects) => {
@@ -793,7 +787,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
 
         const handleRemoteObjectAdd = (data) => {
             if (data.canvasId !== activeFileId) return;
-            console.log('🎨 Remote object added');
+            console.log('remote object added');
 
             isRemoteUpdate.current = true;
             fabric.util.enlivenObjects([data.object], (objects) => {
@@ -808,7 +802,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
 
         const handleRemoteObjectModify = (data) => {
             if (data.canvasId !== activeFileId) return;
-            console.log('🎨 Remote object modified');
+            console.log('remote object modified');
 
             // Simple strategy: if we get a modify event, we could try to find the object by ID 
             // but strictly we are just sending the WHOLE object state in 'changes' (which is the object JSON)
@@ -838,7 +832,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
             // For now, only sync if it matches the active file (or main)
             if (data.canvasId && data.canvasId !== activeFileId && data.canvasId !== 'main') return;
 
-            console.log('🎨 Received Full Canvas Sync');
+            console.log('received full canvas sync');
             if (data.fabricJSON) {
                 isRemoteUpdate.current = true;
                 canvas.loadFromJSON(data.fabricJSON, () => {
@@ -1119,7 +1113,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
             const key = getStorageKey();
             try {
                 localStorage.setItem(key, JSON.stringify(json));
-                console.log('💾 Canvas saved to localStorage');
+                console.log('canvas saved to localStorage');
             } catch (e) {
                 console.error('LocalStorage save error:', e.message);
             }
@@ -1137,7 +1131,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
                 const json = JSON.parse(saved);
                 fabricRef.current.loadFromJSON(json, () => {
                     fabricRef.current.renderAll();
-                    console.log('📂 Canvas loaded from localStorage');
+                    console.log('canvas loaded from localStorage');
                 });
             }
         } catch (e) {
@@ -1196,7 +1190,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
                 // Retry after 500ms
                 setTimeout(tryLoad, 500);
             } else {
-                console.log('⚠️ Canvas not ready for loading after max attempts');
+                console.log('canvas not ready for loading after max attempts');
             }
         };
 
@@ -1213,7 +1207,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
     // Sync userCount with roomUsers prop from parent (App.jsx)
     useEffect(() => {
         if (roomUsers && roomUsers.length > 0) {
-            console.log(`👥 Canvas: Syncing user count from prop: ${roomUsers.length}`);
+            console.log(`canvas user count: ${roomUsers.length}`);
             setUserCount(roomUsers.length);
         }
     }, [roomUsers]);
@@ -1234,7 +1228,7 @@ const Canvas = ({ roomUsers = [], roomId = '', initialState = null }) => {
 
         // Receive full user list when joining (from room-state event)
         const handleRoomState = (data) => {
-            console.log(`👥 Canvas: Room has ${data.users?.length || 0} users`);
+            console.log(`room has ${data.users?.length || 0} users`);
             if (data.users) {
                 setUserCount(data.users.length);
             }

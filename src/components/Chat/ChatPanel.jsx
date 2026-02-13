@@ -2,10 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Users } from 'lucide-react';
 import { sendChatMessage, onChatMessage, getSocketId, isConnected } from '../../services/socket';
 
-/**
- * ChatPanel - Real-time collaboration chat
- * Supports sending and receiving messages within a room
- */
 export default function ChatPanel({ roomId, userName, disabled = false }) {
     const [isOpen, setIsOpen] = useState(false);
     const [message, setMessage] = useState('');
@@ -28,7 +24,7 @@ export default function ChatPanel({ roomId, userName, disabled = false }) {
         if (!roomId) return;
 
         const unsubscribe = onChatMessage((data) => {
-            console.log('📨 Chat message received:', data);
+            console.log('chat msg received:', data);
 
             setMessages(prev => [...prev, {
                 id: data.id || `msg-${Date.now()}`,
@@ -58,7 +54,7 @@ export default function ChatPanel({ roomId, userName, disabled = false }) {
     const handleSend = () => {
         if (!message.trim() || !isConnected()) return;
 
-        console.log('📤 Sending chat message:', message);
+        console.log('sending chat msg:', message);
         sendChatMessage(message.trim());
         setMessage('');
     };

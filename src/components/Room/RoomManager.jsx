@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { Users, Plus, LogIn, Loader2, Copy, Check } from 'lucide-react';
 
-/**
- * RoomManager - Create or join collaboration rooms
- */
 export default function RoomManager({ onJoinRoom, isConnecting }) {
     const [mode, setMode] = useState('choice'); // 'choice', 'create', 'join'
     const [roomName, setRoomName] = useState('');

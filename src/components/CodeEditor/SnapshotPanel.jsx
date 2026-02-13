@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { Clock, RotateCcw, Trash2, X, History } from 'lucide-react';
 import { getSnapshots, deleteSnapshot, formatSnapshotTime } from '../../services/snapshotService';
 
-/**
- * SnapshotPanel - Shows auto-saved code snapshots with restore/delete actions.
- */
 export default function SnapshotPanel({ isOpen, onClose, onRestore, isExperimenting }) {
     const [snapshots, setSnapshots] = useState(() => getSnapshots());
 

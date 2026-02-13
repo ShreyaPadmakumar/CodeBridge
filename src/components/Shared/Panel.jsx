@@ -1,9 +1,5 @@
 import { Minus, Square, X } from 'lucide-react';
 
-/**
- * Panel - Reusable panel component with window controls
- * Supports minimize, maximize, and close functionality
- */
 export default function Panel({
     title,
     icon,

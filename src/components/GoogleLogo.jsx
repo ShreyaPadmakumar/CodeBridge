@@ -1,6 +1,3 @@
-/**
- * Google Logo SVG Component
- */
 export function GoogleLogo({ className = '' }) {
     return (
         <svg className={className} viewBox="0 0 24 24" fill="none">

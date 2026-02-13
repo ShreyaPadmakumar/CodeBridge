@@ -244,14 +244,14 @@ export default function CodeEditor({
         activeTabIdRef.current = activeTabId;
         tabsRef.current = tabs;
         roomIdRef.current = roomId;
-        console.log('🔄 Refs synced:', { activeTabId, tabsCount: tabs.length, roomId });
+        console.log('refs synced:', { activeTabId, tabsCount: tabs.length, roomId });
     }, [activeTabId, tabs, roomId]);
 
     // Load room state when it arrives (for late joiners)
     const hasLoadedRoomState = useRef(false);
     useEffect(() => {
         if (initialRoomState?.codeFiles?.length > 0 && !hasLoadedRoomState.current) {
-            console.log('📥 Loading room state into CodeEditor:', initialRoomState.codeFiles.length, 'files');
+            console.log('loading room state into CodeEditor:', initialRoomState.codeFiles.length, 'files');
             hasLoadedRoomState.current = true;
 
             const newTabs = initialRoomState.codeFiles.map(f => ({
@@ -276,7 +276,7 @@ export default function CodeEditor({
                     if (editorRef.current) {
                         const currentValue = editorRef.current.getValue();
                         if (currentValue !== activeFile.code) {
-                            console.log('📝 Updating Monaco editor with loaded content');
+                            console.log('updating editor with loaded content');
                             editorRef.current.setValue(activeFile.code);
                         }
                     }
@@ -327,7 +327,7 @@ export default function CodeEditor({
         const currentActiveTabId = activeTabIdRef.current;
         const currentTabs = tabsRef.current;
 
-        console.log('🔔 notifyCodeChange called:', {
+        console.log('notifyCodeChange:', {
             currentRoomId,
             connected: isConnected(),
             isRemote: isRemoteChangeRef.current,
@@ -344,14 +344,14 @@ export default function CodeEditor({
             let currentTab = currentTabs?.find(t => t.id === currentActiveTabId);
             if (!currentTab && currentTabs?.length > 0) {
                 currentTab = currentTabs[0];
-                console.log('📋 Using fallback tab:', currentTab.id);
+                console.log('fallback tab:', currentTab.id);
             }
 
             if (currentTab) {
-                console.log('📤 Sending code change for tab:', currentTab.id, currentTab.filename);
+                console.log('sending code change for tab:', currentTab.id, currentTab.filename);
                 sendCodeChange(currentTab.id, newCode, null);
             } else {
-                console.warn('❌ No tabs available!');
+                console.warn('no tabs available!');
             }
         }
         isRemoteChangeRef.current = false;
@@ -376,15 +376,15 @@ export default function CodeEditor({
     // Socket event listeners for real-time sync
     useEffect(() => {
         if (!roomId) {
-            console.log('⚠️ No roomId, skipping socket listeners');
+            console.log('no roomId, skipping socket listeners');
             return;
         }
 
-        console.log('🔌 Setting up socket listeners for room:', roomId);
+        console.log('setting up socket listeners for room:', roomId);
 
         // Listen for remote code changes
         const unsubCodeChange = onRemoteCodeChange((data) => {
-            console.log('📥 Received remote code change:', {
+            console.log('remote code change:', {
                 fileId: data.fileId,
                 contentLength: data.content?.length,
                 from: data.username
@@ -396,11 +396,11 @@ export default function CodeEditor({
             // If no matching tab found, update the first/current tab
             if (!tab && tabsRef.current.length > 0) {
                 tab = tabsRef.current[0];
-                console.log('📋 Using fallback tab for receive:', tab.id);
+                console.log('fallback tab for receive:', tab.id);
             }
 
             if (tab) {
-                console.log('✅ Updating tab with remote content:', tab.id);
+                console.log('updating tab with remote content:', tab.id);
 
                 // Update tab content
                 setTabs(prev => prev.map(t =>
@@ -856,7 +856,7 @@ export default function CodeEditor({
 
         // Sync file deletion to other users
         if (roomIdRef.current && isConnected()) {
-            console.log('📤 Syncing file deletion:', tabId);
+            console.log('syncing file deletion:', tabId);
             sendFileDelete(tabId);
         }
     }, []);
@@ -881,7 +881,7 @@ export default function CodeEditor({
 
         // Sync file creation to other users
         if (roomIdRef.current && isConnected()) {
-            console.log('📤 Syncing new file:', newTab.filename);
+            console.log('syncing new file:', newTab.filename);
             sendFileCreate({
                 id: newTab.id,
                 filename: newTab.filename,

@@ -3,10 +3,6 @@ import { Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Users, Radio, X } from 
 import Peer from 'peerjs';
 import { getSocket, getSocketId, isConnected as socketConnected } from '../../services/socket';
 
-/**
- * VoiceRoom - Zoom-style always-on voice room
- * All users in the room are automatically connected for voice chat
- */
 export default function VoiceRoom({ roomId, userName = 'You' }) {
     // State
     const [isInCall, setIsInCall] = useState(false);
@@ -67,7 +63,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
             stream.getAudioTracks().forEach(track => track.enabled = false);
 
         } catch (err) {
-            console.error('❌ Microphone access denied:', err);
+            console.error('mic access denied:', err);
             setError('Microphone access required. Please allow permissions.');
             setIsConnecting(false);
             return;
@@ -82,7 +78,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         }
 
         myPeerIdRef.current = peerId;
-        console.log('🎤 Joining voice room with ID:', peerId);
+        console.log('joining voice room with ID:', peerId);
 
         const peer = new Peer(peerId, {
             debug: 0,
@@ -95,7 +91,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         });
 
         peer.on('open', (id) => {
-            console.log('✅ PeerJS ready:', id);
+            console.log('peerjs ready:', id);
             peerRef.current = peer;
             setIsInCall(true);
             setIsConnecting(false);
@@ -108,14 +104,14 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         });
 
         peer.on('call', (call) => {
-            console.log('📞 Incoming voice connection from:', call.peer);
+            console.log('incoming voice connection from:', call.peer);
             // Answer with our stream
             call.answer(localStreamRef.current);
             handleIncomingCall(call);
         });
 
         peer.on('error', (err) => {
-            console.error('❌ PeerJS error:', err.type);
+            console.error('peerjs error:', err.type);
             if (err.type === 'unavailable-id') {
                 // Retry with new ID
                 peer.destroy();
@@ -132,7 +128,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
     // Handle incoming call
     const handleIncomingCall = useCallback((call) => {
         call.on('stream', (remoteStream) => {
-            console.log('🔊 Got audio stream from:', call.peer);
+            console.log('got audio stream from:', call.peer);
 
             // Create audio element for this peer
             const audio = document.createElement('audio');
@@ -156,7 +152,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         });
 
         call.on('close', () => {
-            console.log('📴 Peer disconnected:', call.peer);
+            console.log('peer disconnected:', call.peer);
             const conn = connectionsRef.current.get(call.peer);
             if (conn?.audio) {
                 conn.audio.remove();
@@ -172,7 +168,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         if (connectionsRef.current.has(targetPeerId)) return; // Already connected
         if (targetPeerId === myPeerIdRef.current) return; // Don't connect to self
 
-        console.log('📞 Connecting to peer:', targetPeerId);
+        console.log('connecting to peer:', targetPeerId);
         const call = peerRef.current.call(targetPeerId, localStreamRef.current);
 
         if (call) {
@@ -186,7 +182,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         if (!socket) return;
 
         const handleVoiceJoin = ({ peerId, socketId, username }) => {
-            console.log('👤 User joined voice:', peerId, 'username:', username);
+            console.log('user joined voice:', peerId, 'username:', username);
             if (peerId === myPeerIdRef.current) return;
 
             if (isInCall) {
@@ -202,7 +198,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         };
 
         const handleVoiceLeave = ({ peerId }) => {
-            console.log('👤 User left voice:', peerId);
+            console.log('user left voice:', peerId);
             const conn = connectionsRef.current.get(peerId);
             if (conn?.audio) {
                 conn.audio.remove();
@@ -221,7 +217,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
         };
 
         const handleVoiceParticipants = ({ participants: existingPeers }) => {
-            console.log('📋 Existing voice participants:', existingPeers);
+            console.log('existing voice participants:', existingPeers);
             // Connect to all existing peers and store their usernames
             existingPeers.forEach(({ peerId, socketId, username }) => {
                 if (peerId !== myPeerIdRef.current) {
@@ -252,7 +248,7 @@ export default function VoiceRoom({ roomId, userName = 'You' }) {
 
     // Leave voice room
     const leaveVoiceRoom = useCallback(() => {
-        console.log('👋 Leaving voice room');
+        console.log('leaving voice room');
 
         // Notify others
         const socket = getSocket();

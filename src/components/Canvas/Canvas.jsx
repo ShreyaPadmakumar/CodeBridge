@@ -24,10 +24,7 @@ import {
     isConnected
 } from '../../services/socket';
 
-/**
- * Simplified Canvas component for embedding in panels
- * Stripped down version without header/sidebar for multi-panel layout
- */
+// simplified canvas for embedding in panels
 
 // Preset colors
 const PRESET_COLORS = [
@@ -132,9 +129,7 @@ const styles = {
     },
 };
 
-/**
- * Custom Eraser Brush
- */
+// eraser brush - uses destination-out
 class EraserBrush extends fabric.PencilBrush {
     constructor(canvas) {
         super(canvas);
@@ -339,7 +334,7 @@ const Canvas = ({ roomId }) => {
         if (!roomId) return;
 
         const handleRemoteCanvasSync = async (data) => {
-            console.log('📥 Received remote canvas sync:', data.type);
+            console.log('remote canvas sync:', data.type);
             if (!fabricRef.current) return;
 
             isRemoteUpdate.current = true;
@@ -364,14 +359,14 @@ const Canvas = ({ roomId }) => {
                     canvas.loadFromJSON(wrapperJSON, () => {
                         canvas.renderAll();
                         isRemoteUpdate.current = false;
-                        console.log('✅ Remote object added');
+                        console.log('remote object added');
                     });
                 } else if (data.type === 'full-sync' && data.fabricJSON) {
                     // Full sync for modifications or clear
                     canvas.loadFromJSON(data.fabricJSON, () => {
                         canvas.renderAll();
                         isRemoteUpdate.current = false;
-                        console.log('✅ Remote canvas synced');
+                        console.log('remote canvas synced');
                     });
                 } else if (data.type === 'clear') {
                     // Handle clear canvas

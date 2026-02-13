@@ -1,9 +1,5 @@
 import { INTENTS } from '../../services/intentDetector';
 
-/**
- * IntentBadge - Shows a user's detected intent as an animated pill.
- * Displays emoji + label (e.g. "🧪 Experimenting")
- */
 export default function IntentBadge({ intent, compact = false }) {
     if (!intent) return null;
 

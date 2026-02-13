@@ -3,9 +3,6 @@ import { Users, ChevronDown, ChevronUp, Crown, UserX, ArrowRightLeft } from 'luc
 import { kickUser, transferHost, getSocketId } from '../../services/socket';
 import IntentBadge from './IntentBadge';
 
-/**
- * ParticipantsPanel - Shows all room participants with host controls and intent badges
- */
 export default function ParticipantsPanel({
     roomUsers = [],
     hostSocketId = null,

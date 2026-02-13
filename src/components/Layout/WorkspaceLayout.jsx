@@ -5,10 +5,6 @@ import CodeEditor from '../CodeEditor';
 import TerminalPanel from '../CodeEditor/TerminalPanel';
 import Canvas from '../Canvas/CanvasFull';
 
-/**
- * WorkspaceLayout - Main multi-panel layout with window controls
- * Manages the state of all panels (minimized, maximized, hidden)
- */
 export default function WorkspaceLayout({
     // Code execution props
     isExecuting,
