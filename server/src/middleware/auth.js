@@ -1,10 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-/**
- * JWT Authentication Middleware
- * Verifies token and attaches user to request
- */
+// requires valid JWT
 export const auth = async (req, res, next) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -28,10 +25,7 @@ export const auth = async (req, res, next) => {
     }
 };
 
-/**
- * Optional auth - doesn't fail if no token
- * Useful for routes that work with or without auth
- */
+// optional auth - won't fail if missing token
 export const optionalAuth = async (req, res, next) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -51,9 +45,6 @@ export const optionalAuth = async (req, res, next) => {
     }
 };
 
-/**
- * Generate JWT token
- */
 export const generateToken = (userId) => {
     return jwt.sign(
         { userId },

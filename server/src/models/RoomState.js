@@ -1,9 +1,5 @@
 import mongoose from 'mongoose';
 
-/**
- * RoomState - Stores ALL state for a room
- * This is the KEY model for persistence and late-joiner restoration
- */
 const roomStateSchema = new mongoose.Schema({
     roomId: {
         type: String,
@@ -12,7 +8,7 @@ const roomStateSchema = new mongoose.Schema({
         index: true
     },
 
-    // ========== CODE EDITOR STATE ==========
+    // code files
     codeFiles: [{
         id: String,
         filename: String,
@@ -34,7 +30,7 @@ const roomStateSchema = new mongoose.Schema({
         tabSize: { type: Number, default: 4 }
     },
 
-    // ========== CANVAS STATE ==========
+    // canvas
     canvasFiles: [{
         id: String,
         name: String,
@@ -47,7 +43,7 @@ const roomStateSchema = new mongoose.Schema({
         backgroundMode: { type: String, default: 'plain' }
     },
 
-    // ========== TERMINAL HISTORY ==========
+    // terminal history
     terminalHistory: [{
         id: String,
         filename: String,
@@ -59,7 +55,7 @@ const roomStateSchema = new mongoose.Schema({
         timestamp: { type: String, default: () => new Date().toLocaleTimeString() }
     }],
 
-    // ========== CHAT MESSAGES ==========
+    // chat
     chatMessages: [{
         id: String,
         userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -68,7 +64,7 @@ const roomStateSchema = new mongoose.Schema({
         timestamp: { type: Date, default: Date.now }
     }],
 
-    // ========== METADATA ==========
+    // meta
     version: { type: Number, default: 1 },
     lastUpdated: { type: Date, default: Date.now }
 }, {
@@ -87,14 +83,14 @@ roomStateSchema.statics.getOrCreate = async function (roomId) {
     let state = await this.findOne({ roomId });
 
     if (!state) {
-        // Create default state for new room
+        // defaults for new room
         state = await this.create({
             roomId,
             codeFiles: [{
                 id: Date.now().toString(),
                 filename: 'main.py',
                 language: 'python',
-                content: '# Welcome to CodeBuddy!\n# Start coding here...\n\nprint("Hello, World!")\n',
+                content: '# start coding here\n\nprint("Hello, World!")\n',
                 groupId: null,
                 lastModified: new Date()
             }],

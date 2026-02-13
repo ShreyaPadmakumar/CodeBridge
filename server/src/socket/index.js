@@ -3,41 +3,20 @@ import User from '../models/User.js';
 import Room from '../models/Room.js';
 import RoomState from '../models/RoomState.js';
 
-/**
- * Socket.io Handler - Core Real-time Sync Engine
- * 
- * PRIORITY FEATURES:
- * 1. Code Editor Sync (real-time code changes)
- * 2. Canvas Sync (real-time drawing)
- * 3. Late Joiner State Restoration
- * 4. Chat Messages
- */
+// socket handler - realtime sync for code, canvas, chat, voice
 
-// Store active users per room
-const roomUsers = new Map(); // roomId -> Map<socketId, userInfo>
+const roomUsers = new Map();
+const roomHosts = new Map();
+const roomSettings = new Map();
 
-// Store host per room (first user to join becomes host)
-const roomHosts = new Map(); // roomId -> socketId
-
-// Store room settings
-const roomSettings = new Map(); // roomId -> { chatDisabled: boolean }
-
-// Debounce timers for database saves
 const saveTimers = new Map();
-
-/**
- * Debounced save to database (prevents hammering DB on every keystroke)
- * Supports both general updates and file-specific updates
- */
-const pendingSaves = new Map(); // roomId -> { fileId: content }
+const pendingSaves = new Map();
 
 const debouncedSave = (roomId, fileId = null, content = null) => {
-    // Clear existing timer
     if (saveTimers.has(roomId)) {
         clearTimeout(saveTimers.get(roomId));
     }
 
-    // Track pending file updates
     if (fileId && content !== null) {
         if (!pendingSaves.has(roomId)) {
             pendingSaves.set(roomId, new Map());
@@ -45,12 +24,10 @@ const debouncedSave = (roomId, fileId = null, content = null) => {
         pendingSaves.get(roomId).set(fileId, content);
     }
 
-    // Set new timer - save after 2 seconds of inactivity
     const timer = setTimeout(async () => {
         try {
             const filesToSave = pendingSaves.get(roomId);
             if (filesToSave && filesToSave.size > 0) {
-                // Save each pending file update
                 for (const [fId, fContent] of filesToSave) {
                     await RoomState.findOneAndUpdate(
                         { roomId, 'codeFiles.id': fId },
@@ -63,11 +40,11 @@ const debouncedSave = (roomId, fileId = null, content = null) => {
                         }
                     );
                 }
-                console.log(`💾 Saved ${filesToSave.size} file(s) for room: ${roomId}`);
+                console.log(`saved ${filesToSave.size} file(s) for room ${roomId}`);
                 pendingSaves.delete(roomId);
             }
         } catch (error) {
-            console.error(`❌ Save error for room ${roomId}:`, error.message);
+            console.error(`save error for room ${roomId}:`, error.message);
         }
         saveTimers.delete(roomId);
     }, 2000);
@@ -75,11 +52,8 @@ const debouncedSave = (roomId, fileId = null, content = null) => {
     saveTimers.set(roomId, timer);
 };
 
-/**
- * Initialize Socket.io with all handlers
- */
 export default function initializeSocket(io) {
-    // Authentication middleware for sockets
+    // auth middleware
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth.token;
@@ -92,7 +66,6 @@ export default function initializeSocket(io) {
                 }
             }
 
-            // Allow anonymous users with a guest identity
             if (!socket.user) {
                 socket.user = {
                     _id: `guest-${socket.id}`,
@@ -103,7 +76,7 @@ export default function initializeSocket(io) {
 
             next();
         } catch (error) {
-            // Allow connection even with invalid token (as guest)
+            // invalid token - connect as guest anyway
             socket.user = {
                 _id: `guest-${socket.id}`,
                 username: `Guest-${socket.id.substring(0, 6)}`,
@@ -114,28 +87,21 @@ export default function initializeSocket(io) {
     });
 
     io.on('connection', (socket) => {
-        console.log(`🔌 Connected: ${socket.user.username} (${socket.id})`);
+        console.log(`connected: ${socket.user.username} (${socket.id})`);
 
-        // ========================================
-        // ROOM MANAGEMENT
-        // ========================================
-
-        /**
-         * Join a room - CRITICAL: Sends full state to late joiners
-         * Optimized for speed - uses in-memory state first
-         */
+        // --- room management ---
         socket.on('join-room', async ({ roomId, displayName }) => {
             try {
                 socket.join(roomId);
                 socket.roomId = roomId;
 
-                // If displayName is provided, update socket.user.username
+
                 if (displayName && displayName.trim()) {
                     socket.user.username = displayName.trim();
                     socket.displayName = displayName.trim();
                 }
 
-                // Track user in room
+
                 if (!roomUsers.has(roomId)) {
                     roomUsers.set(roomId, new Map());
                 }
@@ -146,43 +112,35 @@ export default function initializeSocket(io) {
                     socketId: socket.id
                 });
 
-                // Set host if first user in room
                 if (!roomHosts.has(roomId)) {
                     roomHosts.set(roomId, socket.id);
-                    console.log(`👑 ${socket.user.username} is now host of room: ${roomId}`);
+                    console.log(`${socket.user.username} is now host of room ${roomId}`);
                 }
 
-                // Initialize room settings if needed
+
                 if (!roomSettings.has(roomId)) {
                     roomSettings.set(roomId, { chatDisabled: false });
                 }
 
-                // Fetch REAL state from database (enables late joiners + persistence)
+                // get state from db for late joiners
                 const roomState = await RoomState.getOrCreate(roomId);
                 const roomDoc = await Room.findOne({ roomId });
 
                 if (roomDoc) {
-                    // Check if current user is the persistent host
                     const isPersistentHost = roomDoc.host && roomDoc.host.toString() === socket.user._id.toString();
 
                     if (isPersistentHost) {
-                        // User IS the host -> reclaim host status
                         roomHosts.set(roomId, socket.id);
-                        console.log(`👑 Host reclaimed by ${socket.user.username} (DB Host)`);
+                        console.log(`host reclaimed by ${socket.user.username}`);
                     } else if (!roomHosts.has(roomId)) {
-                        // Room has no active host connection
                         if (!roomDoc.host) {
-                            // No host in DB either? First joiner becomes host (legacy/fallback)
                             roomHosts.set(roomId, socket.id);
-                            console.log(`👑 ${socket.user.username} became host (First Joiner - No DB Host)`);
+                            console.log(`${socket.user.username} became host (first joiner)`);
                         } else {
-                            // Host exists in DB but is not connected. 
-                            // DO NOT assign random user as host. Wait for real host.
-                            console.log(`info: Room ${roomId} has a DB host who is not connected. ${socket.user.username} is a participant.`);
+                            console.log(`room ${roomId} has a db host who isn't connected, ${socket.user.username} is a participant`);
                         }
                     }
                 } else {
-                    // Fallback if room doc not found (shouldn't happen for valid joins)
                     if (!roomHosts.has(roomId)) {
                         roomHosts.set(roomId, socket.id);
                     }
@@ -206,7 +164,7 @@ export default function initializeSocket(io) {
                     chatDisabled: settings.chatDisabled
                 });
 
-                // Notify others that a new user joined
+
                 socket.to(roomId).emit('user-joined', {
                     user: {
                         id: socket.user._id,
@@ -217,7 +175,7 @@ export default function initializeSocket(io) {
                     hostSocketId
                 });
 
-                console.log(`👤 ${socket.user.username} joined room: ${roomId}`);
+                console.log(`${socket.user.username} joined room ${roomId}`);
 
             } catch (error) {
                 console.error('Join room error:', error);
@@ -225,31 +183,16 @@ export default function initializeSocket(io) {
             }
         });
 
-        /**
-         * Leave room
-         */
-        socket.on('leave-room', () => {
-            handleLeaveRoom(socket, io);
-        });
+        socket.on('leave-room', () => handleLeaveRoom(socket, io));
 
-        // ========================================
-        // CODE EDITOR SYNC - TOP PRIORITY
-        // ========================================
-
-        /**
-         * Code change - broadcast to all users in room
-         * This is the CORE real-time sync for code editor
-         */
+        // --- code sync ---
         socket.on('code-change', async ({ fileId, content, cursorPosition }) => {
             const roomId = socket.roomId;
             if (!roomId) {
-                console.log('❌ code-change: No roomId');
                 return;
             }
 
-            console.log(`📝 code-change received from ${socket.user.username} in room ${roomId}, broadcasting...`);
 
-            // Broadcast to all OTHER users in the room
             socket.to(roomId).emit('code-change', {
                 fileId,
                 content,
@@ -258,21 +201,16 @@ export default function initializeSocket(io) {
                 username: socket.user.username
             });
 
-            // Debounced save to database
             debouncedSave(roomId, fileId, content);
         });
 
-        /**
-         * File operations (create, delete, rename)
-         */
+        // file ops
         socket.on('file-create', async ({ file }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            // Broadcast to others
             socket.to(roomId).emit('file-create', { file, userId: socket.user._id });
 
-            // Save to database
             try {
                 await RoomState.findOneAndUpdate(
                     { roomId },
@@ -305,7 +243,7 @@ export default function initializeSocket(io) {
 
             socket.to(roomId).emit('file-rename', { fileId, newName, userId: socket.user._id });
 
-            // Save to database - update filename directly
+
             try {
                 await RoomState.findOneAndUpdate(
                     { roomId, 'codeFiles.id': fileId },
@@ -326,7 +264,7 @@ export default function initializeSocket(io) {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            // Just broadcast - don't sync active file to others (personal preference)
+
             socket.to(roomId).emit('active-file-change', {
                 fileId,
                 userId: socket.user._id,
@@ -334,9 +272,7 @@ export default function initializeSocket(io) {
             });
         });
 
-        /**
-         * Cursor position sync - shows where other users are editing
-         */
+        // cursor sync
         socket.on('cursor-position', ({ fileId, position, selection }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
@@ -350,18 +286,12 @@ export default function initializeSocket(io) {
             });
         });
 
-        // ========================================
-        // INTENT-AWARE COLLABORATION
-        // ========================================
-
-        /**
-         * Intent update - broadcasts user's detected intent to the room
-         */
+        // intent collab
         socket.on('intent-update', ({ intent }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            // Store intent in user info
+
             const users = roomUsers.get(roomId);
             if (users && users.has(socket.id)) {
                 const userInfo = users.get(socket.id);
@@ -369,7 +299,7 @@ export default function initializeSocket(io) {
                 users.set(socket.id, userInfo);
             }
 
-            // Broadcast to all other users in the room
+
             socket.to(roomId).emit('intent-update', {
                 socketId: socket.id,
                 username: socket.user.username,
@@ -377,9 +307,7 @@ export default function initializeSocket(io) {
             });
         });
 
-        // ========================================
-        // TAB GROUPS SYNC
-        // ========================================
+        // tab groups
 
         socket.on('tab-group-create', async ({ group }) => {
             const roomId = socket.roomId;
@@ -420,13 +348,7 @@ export default function initializeSocket(io) {
             }
         });
 
-        // ========================================
-        // CANVAS SYNC - TOP PRIORITY
-        // ========================================
-
-        /**
-         * Canvas object added/modified
-         */
+        // --- canvas sync ---
         socket.on('canvas-object-add', ({ canvasId, object, objectId }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
@@ -462,10 +384,7 @@ export default function initializeSocket(io) {
             });
         });
 
-        /**
-         * Canvas path created (drawing)
-         * This is the most frequent event during drawing
-         */
+
         socket.on('canvas-path-create', ({ canvasId, pathData }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
@@ -477,22 +396,18 @@ export default function initializeSocket(io) {
             });
         });
 
-        /**
-         * Full canvas state sync (for complex operations)
-         */
+
         socket.on('canvas-full-sync', async (payload) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            console.log(`🎨 Canvas sync from ${socket.user.username} in room ${roomId}`);
+            console.log(`canvas sync from ${socket.user.username} in room ${roomId}`);
 
-            // Pass through all payload fields (type, data, roomId, senderId, etc.)
             socket.to(roomId).emit('canvas-full-sync', {
                 ...payload,
                 userId: socket.user._id
             });
 
-            // Save to database if there's actual canvas data
             if (payload.fabricJSON && payload.canvasId) {
                 try {
                     await RoomState.findOneAndUpdate(
@@ -504,16 +419,14 @@ export default function initializeSocket(io) {
                             lastUpdated: new Date()
                         }
                     );
-                    console.log(`💾 Canvas saved for room: ${roomId}`);
+                    console.log(`canvas saved for room ${roomId}`);
                 } catch (error) {
                     console.error('Canvas save error:', error);
                 }
             }
         });
 
-        /**
-         * Canvas file operations
-         */
+
         socket.on('canvas-file-create', async ({ file }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
@@ -541,9 +454,7 @@ export default function initializeSocket(io) {
             });
         });
 
-        // ========================================
-        // CHAT MESSAGES
-        // ========================================
+        // --- chat ---
 
         socket.on('chat-message', async ({ message }) => {
             const roomId = socket.roomId;
@@ -557,10 +468,9 @@ export default function initializeSocket(io) {
                 timestamp: new Date()
             };
 
-            // Broadcast to all including sender
+
             io.to(roomId).emit('chat-message', chatMessage);
 
-            // Save to database
             try {
                 await RoomState.findOneAndUpdate(
                     { roomId },
@@ -568,7 +478,7 @@ export default function initializeSocket(io) {
                         $push: {
                             chatMessages: {
                                 $each: [chatMessage],
-                                $slice: -100 // Keep last 100 messages
+                                $slice: -100
                             }
                         }
                     }
@@ -578,32 +488,26 @@ export default function initializeSocket(io) {
             }
         });
 
-        // ========================================
-        // VOICE ROOM - Zoom-style voice chat
-        // ========================================
-
-        // Track voice participants per room (in-memory)
+        // --- voice ---
         if (!global.voiceRooms) {
-            global.voiceRooms = new Map(); // roomId -> Set of { peerId, socketId }
+            global.voiceRooms = new Map();
         }
 
-        /**
-         * User joins voice room
-         */
+
         socket.on('voice-join', ({ peerId, roomId: voiceRoomId }) => {
             const roomId = socket.roomId || voiceRoomId;
             if (!roomId) return;
 
-            console.log(`🎤 Voice join: ${peerId} in room ${roomId}`);
+            console.log(`voice join: ${peerId} in room ${roomId}`);
 
-            // Initialize room if needed
+
             if (!global.voiceRooms.has(roomId)) {
                 global.voiceRooms.set(roomId, []);
             }
 
             const voiceRoom = global.voiceRooms.get(roomId);
 
-            // Send existing participants to the new joiner (include username)
+
             socket.emit('voice-participants', {
                 participants: voiceRoom.filter(p => p.peerId !== peerId).map(p => ({
                     peerId: p.peerId,
@@ -613,26 +517,22 @@ export default function initializeSocket(io) {
                 }))
             });
 
-            // Add to voice room with username
+
             if (!voiceRoom.find(p => p.peerId === peerId)) {
                 voiceRoom.push({ peerId, socketId: socket.id, isMuted: true, username: socket.user.username });
             }
 
-            // Store voice peer ID on socket for cleanup
             socket.voicePeerId = peerId;
 
-            // Broadcast to everyone (including sender) so their UI updates - include username
             io.to(roomId).emit('voice-join', { peerId, socketId: socket.id, username: socket.user.username });
         });
 
-        /**
-         * User leaves voice room
-         */
+
         socket.on('voice-leave', ({ peerId }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            console.log(`🎤 Voice leave: ${peerId} from room ${roomId}`);
+            console.log(`voice leave: ${peerId} from room ${roomId}`);
 
             const voiceRoom = global.voiceRooms.get(roomId);
             if (voiceRoom) {
@@ -644,9 +544,7 @@ export default function initializeSocket(io) {
             io.to(roomId).emit('voice-leave', { peerId });
         });
 
-        /**
-         * User mutes/unmutes
-         */
+
         socket.on('voice-mute', ({ peerId, isMuted }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
@@ -660,18 +558,16 @@ export default function initializeSocket(io) {
             io.to(roomId).emit('voice-mute', { peerId, isMuted });
         });
 
-        // ========================================
-        // TERMINAL OUTPUT SYNC
-        // ========================================
+        // terminal output
 
         socket.on('terminal-output', async ({ entry }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            // Broadcast to others
+
             socket.to(roomId).emit('terminal-output', { entry });
 
-            // Save to database (keep last 50 entries)
+
             try {
                 await RoomState.findOneAndUpdate(
                     { roomId },
@@ -689,20 +585,16 @@ export default function initializeSocket(io) {
             }
         });
 
-        // ========================================
-        // CANVAS SYNC
-        // ========================================
+        // --- canvas / cursor / voice II ---
 
         socket.on('canvas-full-sync', async (data) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            console.log(`🎨 Canvas sync from ${socket.username} in room ${roomId}`);
+            console.log(`canvas sync from ${socket.username} in room ${roomId}`);
 
-            // Broadcast to all other users in the room
             socket.to(roomId).emit('canvas-full-sync', data);
 
-            // Save to database for late joiners (only for full-canvas type)
             if (data.type === 'full-canvas' && data.data) {
                 try {
                     await RoomState.findOneAndUpdate(
@@ -720,30 +612,22 @@ export default function initializeSocket(io) {
             }
         });
 
-        // ========================================
-        // CURSOR POSITION (Multiple Cursors)
-        // ========================================
+        // cursor positions
 
-        // Color palette for cursors
         const cursorColors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A78BFA', '#F472B6', '#34D399', '#60A5FA', '#FBBF24'];
 
-        // Store last known cursor positions per room
         if (!global.roomCursorPositions) {
-            global.roomCursorPositions = new Map(); // roomId -> Map<socketId, {username, color, position}>
+            global.roomCursorPositions = new Map();
         }
 
         socket.on('cursor-position', ({ position }) => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
-            // Get username from socket.user (set during auth middleware)
             const username = socket.user?.username || `Guest-${socket.id.substring(0, 6)}`;
 
-            // Assign consistent color based on USERNAME (not socket.id)
-            // This ensures the same user always gets the same color across all tabs
             const colorIndex = Math.abs(username.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % cursorColors.length;
 
-            // Store cursor position for late joiners
             if (!global.roomCursorPositions.has(roomId)) {
                 global.roomCursorPositions.set(roomId, new Map());
             }
@@ -753,7 +637,6 @@ export default function initializeSocket(io) {
                 position
             });
 
-            // Broadcast to others in the room
             socket.to(roomId).emit('cursor-position', {
                 socketId: socket.id,
                 username,
@@ -762,14 +645,13 @@ export default function initializeSocket(io) {
             });
         });
 
-        // Request existing cursor positions (for late joiners)
+
         socket.on('request-cursors', () => {
             const roomId = socket.roomId;
             if (!roomId) return;
 
             const cursors = global.roomCursorPositions.get(roomId);
             if (cursors && cursors.size > 0) {
-                // Send all existing cursor positions to the new joiner
                 cursors.forEach((cursorData, cursorSocketId) => {
                     if (cursorSocketId !== socket.id) {
                         socket.emit('cursor-position', {
@@ -781,20 +663,15 @@ export default function initializeSocket(io) {
             }
         });
 
-        // ========================================
-        // VOICE ROOM
-        // ========================================
-
-        // Track voice participants per room
-        const voiceParticipants = new Map(); // roomId -> Set of peerIds
+        // voice (alt handler)
+        const voiceParticipants = new Map();
 
         socket.on('voice-join', ({ peerId, roomId: voiceRoomId }) => {
             const roomId = voiceRoomId || socket.roomId;
             if (!roomId) return;
 
-            console.log(`🎤 ${socket.username} joined voice room: ${roomId}, peerId: ${peerId}`);
+            console.log(`${socket.username} joined voice room ${roomId}`);
 
-            // Track participant
             if (!voiceParticipants.has(roomId)) {
                 voiceParticipants.set(roomId, new Set());
             }
@@ -807,7 +684,6 @@ export default function initializeSocket(io) {
                 username: socket.username
             });
 
-            // Send existing participants to the new joiner
             const existing = Array.from(voiceParticipants.get(roomId)).filter(p => p !== peerId);
             if (existing.length > 0) {
                 socket.emit('voice-participants', { participants: existing });
@@ -818,14 +694,12 @@ export default function initializeSocket(io) {
             const roomId = voiceRoomId || socket.roomId;
             if (!roomId) return;
 
-            console.log(`👋 ${socket.username} left voice room: ${roomId}`);
+            console.log(`${socket.username} left voice room ${roomId}`);
 
-            // Remove from tracking
             if (voiceParticipants.has(roomId)) {
                 voiceParticipants.get(roomId).delete(peerId);
             }
 
-            // Notify others
             socket.to(roomId).emit('voice-leave', { peerId });
         });
 
@@ -833,25 +707,17 @@ export default function initializeSocket(io) {
             const roomId = voiceRoomId || socket.roomId;
             if (!roomId) return;
 
-            // Broadcast mute status
             socket.to(roomId).emit('voice-mute', { peerId, isMuted });
         });
 
-        // ========================================
-        // HOST CONTROLS
-        // ========================================
+        // host controls
 
-        /**
-         * Helper: Check if socket is host
-         */
         const isHost = (socket) => {
             const roomId = socket.roomId;
             return roomId && roomHosts.get(roomId) === socket.id;
         };
 
-        /**
-         * Kick a user from the room (host only)
-         */
+
         socket.on('host-kick-user', ({ targetSocketId }) => {
             if (!isHost(socket)) {
                 socket.emit('host-error', { message: 'Only the host can kick users' });
@@ -862,48 +728,33 @@ export default function initializeSocket(io) {
             const targetSocket = io.sockets.sockets.get(targetSocketId);
 
             if (targetSocket && targetSocket.roomId === roomId) {
-                // Notify the kicked user
-                targetSocket.emit('you-were-kicked', {
-                    by: socket.user.username
-                });
+                targetSocket.emit('you-were-kicked', { by: socket.user.username });
 
-                // Remove them from the room
                 handleLeaveRoom(targetSocket, io);
-
-                console.log(`🚪 ${socket.user.username} kicked ${targetSocket.user.username} from room: ${roomId}`);
+                console.log(`${socket.user.username} kicked ${targetSocket.user.username} from room ${roomId}`);
             }
         });
 
-        /**
-         * Force mute a user's voice (host only)
-         */
+
         socket.on('host-mute-user', ({ targetSocketId }) => {
             if (!isHost(socket)) {
                 socket.emit('host-error', { message: 'Only the host can mute users' });
                 return;
             }
 
-            const roomId = socket.roomId;
+            io.to(targetSocketId).emit('you-were-muted', { by: socket.user.username });
 
-            // Notify the muted user
-            io.to(targetSocketId).emit('you-were-muted', {
-                by: socket.user.username
-            });
-
-            // Broadcast mute status to everyone
-            io.to(roomId).emit('voice-mute', {
+            io.to(socket.roomId).emit('voice-mute', {
                 peerId: null, // Will need peerId lookup
                 socketId: targetSocketId,
                 isMuted: true,
                 forcedByHost: true
             });
 
-            console.log(`🔇 Host muted user: ${targetSocketId} in room: ${roomId}`);
+            console.log(`host muted user ${targetSocketId} in room ${socket.roomId}`);
         });
 
-        /**
-         * Transfer host role to another user (host only)
-         */
+
         socket.on('host-transfer', ({ targetSocketId }) => {
             if (!isHost(socket)) {
                 socket.emit('host-error', { message: 'Only the host can transfer host role' });
@@ -912,22 +763,17 @@ export default function initializeSocket(io) {
 
             const roomId = socket.roomId;
 
-            // Verify target is in the room
+
             if (roomUsers.has(roomId) && roomUsers.get(roomId).has(targetSocketId)) {
                 roomHosts.set(roomId, targetSocketId);
 
-                // Notify everyone
-                io.to(roomId).emit('host-changed', {
-                    hostSocketId: targetSocketId
-                });
+                io.to(roomId).emit('host-changed', { hostSocketId: targetSocketId });
 
-                console.log(`👑 Host transferred from ${socket.id} to ${targetSocketId} in room: ${roomId}`);
+                console.log(`host transferred from ${socket.id} to ${targetSocketId} in room ${roomId}`);
             }
         });
 
-        /**
-         * Toggle chat enabled/disabled for the room (host only)
-         */
+
         socket.on('host-toggle-chat', ({ disabled }) => {
             if (!isHost(socket)) {
                 socket.emit('host-error', { message: 'Only the host can toggle chat' });
@@ -940,18 +786,12 @@ export default function initializeSocket(io) {
                 roomSettings.get(roomId).chatDisabled = disabled;
             }
 
-            // Notify everyone
-            io.to(roomId).emit('chat-toggled', {
-                disabled,
-                by: socket.user.username
-            });
+            io.to(roomId).emit('chat-toggled', { disabled, by: socket.user.username });
 
-            console.log(`💬 Chat ${disabled ? 'disabled' : 'enabled'} by host in room: ${roomId}`);
+            console.log(`chat ${disabled ? 'disabled' : 'enabled'} by host in room ${roomId}`);
         });
 
-        /**
-         * End session for everyone (host only)
-         */
+
         socket.on('host-end-session', () => {
             if (!isHost(socket)) {
                 socket.emit('host-error', { message: 'Only the host can end the session' });
@@ -960,17 +800,11 @@ export default function initializeSocket(io) {
 
             const roomId = socket.roomId;
 
-            // Notify everyone that session is ending
-            io.to(roomId).emit('session-ended', {
-                by: socket.user.username
-            });
+            io.to(roomId).emit('session-ended', { by: socket.user.username });
 
-            console.log(`🛑 Session ended by host in room: ${roomId}`);
+            console.log(`session ended by host in room ${roomId}`);
 
-            // Disconnect all users from the room
-            const roomSocketIds = roomUsers.has(roomId)
-                ? Array.from(roomUsers.get(roomId).keys())
-                : [];
+            const roomSocketIds = roomUsers.has(roomId) ? Array.from(roomUsers.get(roomId).keys()) : [];
 
             roomSocketIds.forEach(socketId => {
                 const targetSocket = io.sockets.sockets.get(socketId);
@@ -979,50 +813,39 @@ export default function initializeSocket(io) {
                 }
             });
 
-            // Clean up room data
             roomUsers.delete(roomId);
             roomHosts.delete(roomId);
             roomSettings.delete(roomId);
         });
 
-        // ========================================
-        // DISCONNECT HANDLING
-        // ========================================
+        // disconnect
 
         socket.on('disconnect', () => {
             handleLeaveRoom(socket, io);
-            console.log(`🔌 Disconnected: ${socket.user.username}`);
+            console.log(`disconnected: ${socket.user.username}`);
         });
     });
 }
 
-/**
- * Handle user leaving room
- */
 function handleLeaveRoom(socket, io) {
     const roomId = socket.roomId;
     if (!roomId) return;
 
-    // Remove from room users
+
     if (roomUsers.has(roomId)) {
         roomUsers.get(roomId).delete(socket.id);
 
-        // Handle host leaving - transfer to next user
         if (roomHosts.get(roomId) === socket.id) {
             const remainingUsers = Array.from(roomUsers.get(roomId).keys());
             if (remainingUsers.length > 0) {
                 const newHostId = remainingUsers[0];
                 roomHosts.set(roomId, newHostId);
-                console.log(`👑 Host transferred to socket: ${newHostId} in room: ${roomId}`);
+                console.log(`host transferred to ${newHostId} in room ${roomId}`);
 
-                // Notify everyone of new host
-                io.to(roomId).emit('host-changed', {
-                    hostSocketId: newHostId
-                });
+                io.to(roomId).emit('host-changed', { hostSocketId: newHostId });
             }
         }
 
-        // Notify others
         socket.to(roomId).emit('user-left', {
             user: {
                 id: socket.user._id,
@@ -1033,7 +856,6 @@ function handleLeaveRoom(socket, io) {
             hostSocketId: roomHosts.get(roomId)
         });
 
-        // Clean up empty rooms
         if (roomUsers.get(roomId).size === 0) {
             roomUsers.delete(roomId);
             roomHosts.delete(roomId);

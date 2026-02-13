@@ -5,15 +5,10 @@ import { generateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-/**
- * POST /api/auth/signup
- * Create new user account
- */
 router.post('/signup', async (req, res) => {
     try {
         const { username, email, password } = req.body;
 
-        // Validation
         if (!username || !email || !password) {
             return res.status(400).json({ error: 'All fields are required' });
         }
@@ -22,7 +17,7 @@ router.post('/signup', async (req, res) => {
             return res.status(400).json({ error: 'Password must be at least 6 characters' });
         }
 
-        // Check if user exists
+
         const existingUser = await User.findOne({
             $or: [{ email }, { username }]
         });
@@ -32,7 +27,7 @@ router.post('/signup', async (req, res) => {
             return res.status(400).json({ error: `${field} already exists` });
         }
 
-        // Create user
+
         const user = new User({ username, email, password });
         await user.save();
 
@@ -51,10 +46,6 @@ router.post('/signup', async (req, res) => {
     }
 });
 
-/**
- * POST /api/auth/login
- * Login and get JWT token
- */
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -63,24 +54,24 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
 
-        // Find user
+
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Check password
+
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Update last login
+
         user.lastSeen = new Date();
         user.isOnline = true;
         await user.save();
 
-        // Generate token
+
         const token = generateToken(user._id);
 
         res.json({
@@ -95,10 +86,6 @@ router.post('/login', async (req, res) => {
     }
 });
 
-/**
- * GET /api/auth/me
- * Get current user info
- */
 router.get('/me', async (req, res) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -121,10 +108,7 @@ router.get('/me', async (req, res) => {
     }
 });
 
-/**
- * POST /api/auth/logout
- * Logout (mainly for tracking online status)
- */
+// logout
 router.post('/logout', async (req, res) => {
     try {
         const token = req.header('Authorization')?.replace('Bearer ', '');
