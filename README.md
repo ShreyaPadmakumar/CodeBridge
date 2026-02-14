@@ -12,7 +12,7 @@
 - Member 1: Shreya Padmakumar - NSS College of Engineering
 - Member 2: Devika R K - NSS College of Engineering
 
-**Hosted Project Link:** [https://codebridge.onrender.com](https://codebridge.onrender.com)
+**Hosted Project Link:** [https://codebridge.onrender.com](https://codebridge-i1rx.onrender.com)
 
 **Project Description:**  
 CodeBridge is a browser-based collaborative coding platform that lets multiple users write code, draw on a shared canvas, chat, and talk — all in real-time. Think Google Docs, but for developers.
